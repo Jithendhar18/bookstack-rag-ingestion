@@ -97,42 +97,42 @@ erDiagram
     INGESTION_RUNS ||--o{ PAGE_SYNC_AUDIT : records
 
     DOCUMENTS {
-      bigint page_id PK
-      text title
-      text book_slug
-      bigint chapter_id
-      timestamptz updated_at
-      timestamptz last_synced_at
+            int page_id PK
+            string title
+            string book_slug
+            int chapter_id
+            datetime updated_at
+            datetime last_synced_at
     }
 
     DOCUMENT_CHUNKS {
-      bigint chunk_id PK
-      bigint page_id FK
+            int chunk_id PK
+            int page_id FK
       int chunk_index
-      text chunk_text
-      text vector_id UNIQUE
-      timestamptz created_at
+            string chunk_text
+            string vector_id
+            datetime created_at
     }
 
     INGESTION_RUNS {
-      bigint run_id PK
-      timestamptz started_at
-      timestamptz finished_at
-      text status
+            int run_id PK
+            datetime started_at
+            datetime finished_at
+            string status
       int processed_pages
       int failed_pages
-      text notes
+            string notes
     }
 
     PAGE_SYNC_AUDIT {
-      bigint audit_id PK
-      bigint run_id FK
-      bigint page_id
-      text status
-      text reason
-      timestamptz source_updated_at
-      timestamptz local_updated_at
-      timestamptz created_at
+            int audit_id PK
+            int run_id FK
+            int page_id
+            string status
+            string reason
+            datetime source_updated_at
+            datetime local_updated_at
+            datetime created_at
     }
 ```
 
