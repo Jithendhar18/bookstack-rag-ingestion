@@ -4,7 +4,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import ProgrammingError
 
 from app.config.settings import Settings
@@ -31,15 +31,36 @@ class MigrationRunner:
 
         return [after]
 
+    def bootstrap_if_uninitialized(self) -> list[str]:
+        """Run migrations only for fresh databases without Alembic history.
+
+        This keeps day-to-day schema updates manual via scripts/db_migrate.py.
+        """
+        if self._has_alembic_version_table():
+            return []
+
+        return self.run()
+
+    def _has_alembic_version_table(self) -> bool:
+        engine = create_engine(self.settings.postgres_sqlalchemy_url, pool_pre_ping=True)
+        try:
+            with engine.connect() as connection:
+                return bool(inspect(connection).has_table("alembic_version"))
+        finally:
+            engine.dispose()
+
     def _get_current_revision(self) -> str | None:
         engine = create_engine(self.settings.postgres_sqlalchemy_url, pool_pre_ping=True)
 
-        with engine.connect() as connection:
-            try:
-                row = connection.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
-            except ProgrammingError:
-                connection.rollback()
-                return None
+        try:
+            with engine.connect() as connection:
+                try:
+                    row = connection.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
+                except ProgrammingError:
+                    connection.rollback()
+                    return None
 
-            record = row.first()
-            return str(record[0]) if record else None
+                record = row.first()
+                return str(record[0]) if record else None
+        finally:
+            engine.dispose()

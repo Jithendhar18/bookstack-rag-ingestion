@@ -7,7 +7,7 @@ For architecture visuals and state diagrams, see [docs/LOW_LEVEL_ARCHITECTURE_DI
 ## 1) Runtime Flow (Step-by-Step)
 
 1. `scripts/run_ingestion.py` loads settings from `.env`.
-2. `IngestionPipeline.run()` executes Alembic migrations to head.
+2. `IngestionPipeline.run()` runs Alembic only for first-time bootstrap (when `alembic_version` is missing).
 3. BookStack pages are fetched (`GET /api/pages`).
 4. Delete propagation runs:
    - local `documents.page_id` set

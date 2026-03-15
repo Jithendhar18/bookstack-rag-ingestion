@@ -38,9 +38,9 @@ class IngestionPipeline:
         self.embedding_service = EmbeddingService(settings=settings)
 
     def run(self) -> None:
-        applied_migrations = MigrationRunner(settings=self.settings).run()
+        applied_migrations = MigrationRunner(settings=self.settings).bootstrap_if_uninitialized()
         if applied_migrations:
-            print(f"Applied {len(applied_migrations)} migration(s) before ingestion.")
+            print(f"Bootstrapped schema with {len(applied_migrations)} migration(s) before ingestion.")
 
         run_id = self.metadata_store.start_ingestion_run(notes="bookstack_ingestion")
         processed_pages = 0

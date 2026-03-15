@@ -206,7 +206,11 @@ Run migrations manually:
 python3 scripts/db_migrate.py
 ```
 
-Ingestion also runs `alembic upgrade head` automatically before syncing documents.
+Migration policy:
+
+- **Manual by default**: schema updates should be applied with `python3 scripts/db_migrate.py`.
+- **Auto bootstrap only once**: ingestion auto-runs migrations only when the DB is fresh and `alembic_version` does not exist yet.
+- If `alembic_version` already exists, ingestion does not apply new migrations automatically.
 
 ## Implementation Deep Dives
 
