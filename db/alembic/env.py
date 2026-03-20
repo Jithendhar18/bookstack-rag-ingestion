@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import sys
 from logging.config import fileConfig
 from pathlib import Path
-import sys
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
@@ -11,10 +11,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.db.base import Base  # noqa: E402
+from app.config.settings import get_settings  # noqa: E402
 from app.db import models  # noqa: F401,E402  # Ensures model registration on Base.metadata
+from app.db.base import Base  # noqa: E402
 
 config = context.config
+
+# Override sqlalchemy.url from Settings instead of hardcoded alembic.ini value
+config.set_main_option("sqlalchemy.url", get_settings().postgres_sqlalchemy_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

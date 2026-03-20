@@ -11,12 +11,15 @@ from app.config.settings import Settings
 
 
 class MigrationRunner:
+    """Runs Alembic database migrations programmatically."""
+
     def __init__(self, settings: Settings, alembic_ini_path: Path | None = None) -> None:
         self.settings = settings
         self.project_root = Path(__file__).resolve().parents[2]
         self.alembic_ini_path = alembic_ini_path or self.project_root / "alembic.ini"
 
     def run(self) -> list[str]:
+        """Apply all pending Alembic migrations and return applied revisions."""
         before = self._get_current_revision()
 
         config = Config(str(self.alembic_ini_path))
@@ -55,7 +58,9 @@ class MigrationRunner:
         try:
             with engine.connect() as connection:
                 try:
-                    row = connection.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
+                    row = connection.execute(
+                        text("SELECT version_num FROM alembic_version LIMIT 1")
+                    )
                 except ProgrammingError:
                     connection.rollback()
                     return None

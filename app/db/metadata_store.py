@@ -12,6 +12,8 @@ from app.loaders.document_loader import LoadedDocument
 
 
 class MetadataStore:
+    """PostgreSQL-backed store for document metadata and ingestion audit records."""
+
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.session_manager = SessionManager(settings=settings)
@@ -42,6 +44,7 @@ class MetadataStore:
         return _lock_context()
 
     def get_document(self, page_id: int) -> dict[str, Any] | None:
+        """Retrieve a document's metadata by page ID, or None if not found."""
         with self.session_manager.session_scope() as session:
             document = session.get(Document, page_id)
 
@@ -58,6 +61,7 @@ class MetadataStore:
         }
 
     def start_ingestion_run(self, notes: str | None = None) -> int:
+        """Create a new ingestion run record and return its ID."""
         with self.session_manager.session_scope() as session:
             run = IngestionRun(status="RUNNING", notes=notes)
             session.add(run)
@@ -72,6 +76,7 @@ class MetadataStore:
         failed_pages: int,
         notes: str | None = None,
     ) -> None:
+        """Update an ingestion run with final status and page counts."""
         with self.session_manager.session_scope() as session:
             run = session.get(IngestionRun, run_id)
             if run is None:
@@ -92,6 +97,7 @@ class MetadataStore:
         source_updated_at: datetime | None = None,
         local_updated_at: datetime | None = None,
     ) -> None:
+        """Record an audit entry for a page within an ingestion run."""
         with self.session_manager.session_scope() as session:
             session.add(
                 PageSyncAudit(
@@ -105,15 +111,18 @@ class MetadataStore:
             )
 
     def list_document_page_ids(self) -> set[int]:
+        """Return the set of all stored document page IDs."""
         with self.session_manager.session_scope() as session:
             rows = session.execute(select(Document.page_id)).all()
         return {int(row[0]) for row in rows}
 
     def delete_document(self, page_id: int) -> None:
+        """Delete a document record by page ID."""
         with self.session_manager.session_scope() as session:
             session.execute(delete(Document).where(Document.page_id == page_id))
 
     def is_page_stale(self, page_id: int, updated_at_raw: str) -> bool:
+        """Check whether a page has been updated since last sync."""
         existing = self.get_document(page_id)
         if not existing:
             return True
@@ -127,6 +136,7 @@ class MetadataStore:
         return remote_updated_at > local_updated_at
 
     def upsert_document(self, document: LoadedDocument) -> None:
+        """Insert or update a document record from a LoadedDocument."""
         with self.session_manager.session_scope() as session:
             existing = session.get(Document, document.page_id)
             parsed_updated_at = self._parse_timestamp(document.updated_at)
@@ -149,11 +159,12 @@ class MetadataStore:
                 existing.last_synced_at = datetime.now(timezone.utc)
 
     def get_document_chunks(self, page_id: int) -> dict[str, dict[str, Any]]:
+        """Return existing chunks for a page as a dict keyed by vector_id."""
         with self.session_manager.session_scope() as session:
             rows = session.execute(
-                select(DocumentChunk.chunk_index, DocumentChunk.chunk_text, DocumentChunk.vector_id).where(
-                    DocumentChunk.page_id == page_id
-                )
+                select(
+                    DocumentChunk.chunk_index, DocumentChunk.chunk_text, DocumentChunk.vector_id
+                ).where(DocumentChunk.page_id == page_id)
             ).all()
 
         chunk_map: dict[str, dict[str, Any]] = {}
@@ -168,6 +179,7 @@ class MetadataStore:
         return chunk_map
 
     def delete_document_chunks_by_vector_ids(self, page_id: int, vector_ids: list[str]) -> None:
+        """Delete document chunks matching the given vector IDs."""
         if not vector_ids:
             return
 
@@ -180,6 +192,7 @@ class MetadataStore:
             )
 
     def upsert_document_chunks(self, page_id: int, rows: list[tuple[int, str, str]]) -> None:
+        """Insert or update document chunks for a page."""
         if not rows:
             return
 

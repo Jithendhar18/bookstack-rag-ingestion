@@ -9,11 +9,14 @@ from app.db.metadata_store import MetadataStore
 
 
 class DocumentSyncService:
+    """Determines which BookStack pages need re-ingestion by comparing remote and local state."""
+
     def __init__(self, bookstack_client: BookStackClient, metadata_store: MetadataStore) -> None:
         self.bookstack_client = bookstack_client
         self.metadata_store = metadata_store
 
     def get_pages_to_sync(self, pages: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+        """Return pages that are new or have been updated since last sync."""
         pages = pages if pages is not None else self.bookstack_client.get_pages()
         candidates: list[dict[str, Any]] = []
 
@@ -34,7 +37,10 @@ class DocumentSyncService:
 
         return candidates
 
-    def classify_pages(self, pages: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[SyncDecision]]:
+    def classify_pages(
+        self, pages: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], list[SyncDecision]]:
+        """Classify each page as NEW, UPDATED, or UNCHANGED relative to local metadata."""
         candidates: list[dict[str, Any]] = []
         decisions: list[SyncDecision] = []
 
@@ -119,6 +125,7 @@ class DocumentSyncService:
 
     @staticmethod
     def extract_page_ids(pages: list[dict[str, Any]]) -> set[int]:
+        """Extract all valid integer page IDs from a list of page dicts."""
         page_ids: set[int] = set()
         for page in pages:
             raw_id = page.get("id")
@@ -132,6 +139,7 @@ class DocumentSyncService:
 
     @staticmethod
     def as_batches(pages: list[dict[str, Any]], batch_size: int) -> list[list[dict[str, Any]]]:
+        """Split a list of pages into batches of the given size."""
         if batch_size <= 0:
             raise ValueError("batch_size must be > 0")
 
@@ -140,6 +148,8 @@ class DocumentSyncService:
 
 @dataclass(frozen=True)
 class SyncDecision:
+    """Result of classifying a page's sync status."""
+
     page_id: int
     status: str
     reason: str

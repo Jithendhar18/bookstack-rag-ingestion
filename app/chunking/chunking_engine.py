@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
 import tiktoken
+from pydantic import BaseModel
 
 
 class TextChunk(BaseModel):
+    """A text chunk produced by the chunking engine with token boundaries."""
+
     chunk_index: int
     text: str
     start_token: int
@@ -12,7 +14,11 @@ class TextChunk(BaseModel):
 
 
 class ChunkingEngine:
-    def __init__(self, chunk_size: int = 500, overlap: int = 100, encoding_name: str = "cl100k_base") -> None:
+    """Splits text into overlapping token-based chunks using tiktoken."""
+
+    def __init__(
+        self, chunk_size: int = 500, overlap: int = 100, encoding_name: str = "cl100k_base"
+    ) -> None:
         if chunk_size <= 0:
             raise ValueError("chunk_size must be > 0")
         if overlap < 0:
@@ -25,6 +31,7 @@ class ChunkingEngine:
         self.tokenizer = tiktoken.get_encoding(encoding_name)
 
     def chunk_text(self, text: str) -> list[TextChunk]:
+        """Split text into overlapping chunks by token count."""
         if not text.strip():
             return []
 

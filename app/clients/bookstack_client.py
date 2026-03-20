@@ -11,9 +11,14 @@ from app.config.settings import Settings
 
 
 class BookStackClient:
-    def __init__(self, settings: Settings, timeout: int = 30) -> None:
+    """HTTP client for the BookStack REST API.
+
+    Handles authentication, rate limiting, pagination, and retries.
+    """
+
+    def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.timeout = timeout
+        self.timeout = settings.bookstack_timeout
         self.session = requests.Session()
         self.session.headers.update(self.settings.bookstack_auth_header)
         self._request_interval_seconds = (
@@ -25,6 +30,7 @@ class BookStackClient:
         self._configure_retries()
 
     def _configure_retries(self) -> None:
+        """Configure retry strategy on the HTTP session."""
         retry = Retry(
             total=self.settings.bookstack_max_retries,
             backoff_factor=self.settings.retry_backoff_seconds,
@@ -37,6 +43,7 @@ class BookStackClient:
         self.session.mount("https://", adapter)
 
     def _apply_rate_limit(self) -> None:
+        """Sleep if necessary to respect the configured request rate."""
         if self._request_interval_seconds <= 0:
             return
 
@@ -46,6 +53,7 @@ class BookStackClient:
             time.sleep(wait_seconds)
 
     def _get(self, endpoint: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Send an authenticated GET request to BookStack."""
         url = f"{self.settings.bookstack_api_base}{endpoint}"
         self._apply_rate_limit()
         response = self.session.get(url, params=params, timeout=self.timeout)
@@ -58,7 +66,10 @@ class BookStackClient:
 
         return payload
 
-    def _get_paginated(self, endpoint: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def _get_paginated(
+        self, endpoint: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch all pages of a paginated BookStack endpoint."""
         merged_params = params.copy() if params else {}
         count = 100
         offset = 0
@@ -89,13 +100,17 @@ class BookStackClient:
         return results
 
     def get_pages(self) -> list[dict[str, Any]]:
+        """Retrieve all pages from BookStack."""
         return self._get_paginated("/pages")
 
     def get_page(self, page_id: int) -> dict[str, Any]:
+        """Retrieve a single page by ID."""
         return self._get(f"/pages/{page_id}")
 
     def get_books(self) -> list[dict[str, Any]]:
+        """Retrieve all books from BookStack."""
         return self._get_paginated("/books")
 
     def get_chapters(self) -> list[dict[str, Any]]:
+        """Retrieve all chapters from BookStack."""
         return self._get_paginated("/chapters")

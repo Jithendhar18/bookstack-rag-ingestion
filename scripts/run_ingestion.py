@@ -7,12 +7,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app.config.logging import setup_logging
 from app.config.settings import get_settings
 from app.pipelines.ingestion_pipeline import IngestionPipeline
 
 
 def main() -> None:
     settings = get_settings()
+    setup_logging(log_level=settings.log_level, json_output=settings.log_json)
     pipeline = IngestionPipeline(settings=settings)
     pipeline.run()
 
