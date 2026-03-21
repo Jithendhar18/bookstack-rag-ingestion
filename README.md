@@ -76,22 +76,22 @@ python scripts/run_ingestion.py
 ### 6. Start the API
 
 ```bash
-# Full API (query + chat + ingestion + health)
-python scripts/run_complete_api.py
-
-# Query API only
 python scripts/run_query_api.py
 ```
 
-The API is available at `http://localhost:8001`. Interactive docs at `http://localhost:8001/docs`.
+The API is available at `http://localhost:8001`. All routes are served under `/api/v1/`.
+Interactive docs: `http://localhost:8001/docs`.
 
 ## Project Structure
 
 ```
 ├── app/
-│   ├── api/                  # FastAPI routes, schemas, dependencies
-│   │   ├── routes/           # Endpoint handlers (query, chat, ingestion, health)
-│   │   └── schemas/          # Pydantic request/response models
+│   ├── api/                  # FastAPI application, routes, schemas, middleware
+│   │   ├── routes/v1/        # Versioned endpoint handlers (query, chat, ingestion, metrics)
+│   │   ├── middleware/       # Error handler and request-context middleware
+│   │   ├── schemas/v1.py     # Centralized Pydantic request/response models
+│   │   ├── pagination.py     # Shared pagination helpers
+│   │   └── main.py           # App factory, middleware registration
 │   ├── config/               # Pydantic Settings, constants, logging
 │   ├── domain/               # Business entities and repository interfaces
 │   ├── infrastructure/       # Concrete implementations (DB, vectors, embeddings)
@@ -128,7 +128,8 @@ Key configuration groups:
 | Ingestion | `CHUNK_SIZE`, `CHUNK_OVERLAP`, `SYNC_BATCH_SIZE`, `MAX_WORKERS` | Pipeline tuning |
 | LLM | `LLM_MODEL`, `ENABLE_LLM_GENERATION`, `ENABLE_RERANKING` | Answer generation |
 | Chat | `ENABLE_CHAT`, `CHAT_HISTORY_LIMIT` | Chat system |
-| API | `API_PORT`, `CORS_ORIGINS`, `RATE_LIMIT_PER_MINUTE` | Server settings |
+| API | `API_HOST`, `API_PORT`, `CORS_ORIGINS`, `RATE_LIMIT_PER_MINUTE` | Server settings |
+| Observability | `ENVIRONMENT`, `DEBUG`, `LOG_LEVEL`, `LOG_JSON` | Runtime environment and logging |
 
 ## Database Schema
 
@@ -146,8 +147,8 @@ Migrations are managed with Alembic — see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE
 
 ## Documentation
 
+- [API_DOCS.md](API_DOCS.md) — Complete API reference with request/response examples for all 20 endpoints
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System design, data flow, and layer descriptions
-- [API_DOCS.md](API_DOCS.md) — Complete API reference with examples
 - [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) — Development workflow and extension guide
 
 ## License

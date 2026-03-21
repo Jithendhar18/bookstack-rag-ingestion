@@ -12,10 +12,11 @@ graph TB
     end
 
     subgraph "BookStack RAG System"
-        subgraph "API Layer - FastAPI"
-            QR["/query/*"]
-            CR["/chat/*"]
-            IR["/ingestion/*"]
+        subgraph "API Layer - FastAPI /api/v1"
+            QR["/api/v1/query"]
+            CR["/api/v1/chat/*"]
+            IR["/api/v1/ingestion/*"]
+            MR["/api/v1/metrics/*"]
             HR["/health/*"]
         end
 
@@ -33,7 +34,7 @@ graph TB
         end
     end
 
-    Client --> QR & CR & IR & HR
+    Client --> QR & CR & IR & MR & HR
     QR --> QS
     CR --> CS
     IR --> IS
@@ -102,10 +103,12 @@ Business logic orchestration. Services coordinate between repositories and exter
 
 ### API Layer — `app/api/`
 
-FastAPI endpoints, Pydantic schemas, and dependency injection.
+FastAPI endpoints, Pydantic schemas, middleware, and dependency injection. All business routes are versioned under `/api/v1/`; health checks remain at `/health/`.
 
-- **Routes** (`routes/`) — Endpoint handlers for query, chat, ingestion, and health
-- **Schemas** (`schemas/`) — Pydantic request/response models with validation
+- **Routes** (`routes/v1/`) — Versioned endpoint handlers for query, chat, ingestion, metrics, and health
+- **Schemas** (`schemas/v1.py`) — Centralized Pydantic request/response models with validation
+- **Middleware** (`middleware/`) — Request-context propagation (`x-request-id`, timing) and standardized error formatting (`{"error": {"code", "message", "details"}}`)
+- **Pagination** (`pagination.py`) — Shared `PaginationParams` and `paginated_response` helper
 - **Dependencies** (`dependencies.py`) — Service factory functions injected via `Depends()`
 
 ## Data Flow

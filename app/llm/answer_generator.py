@@ -146,6 +146,58 @@ Answer based only on the context provided."""
         logger.error("llm.openai_failed", error=str(last_error))
         raise last_error
 
+    # ── streaming ──────────────────────────────────────────────────
+
+    def generate_stream(
+        self,
+        query: str,
+        chunks: list[ChunkResult],
+    ):
+        """Yield answer tokens one-by-one via OpenAI streaming.
+
+        Falls back to a single-shot yield when streaming is unavailable.
+        """
+        if not chunks:
+            yield "No relevant information found to answer the question."
+            return
+
+        context = self._build_context(chunks)
+        if not context:
+            yield "Unable to process retrieved information."
+            return
+
+        if self.provider != "openai":
+            yield self._generate_local(query, context)
+            return
+
+        client = self._get_openai_client()
+
+        system_prompt = (
+            "You are a helpful AI assistant that answers questions based ONLY on the "
+            "provided context.\nIf the context doesn't contain relevant information to "
+            "answer the question, say so clearly.\nKeep answers concise and well-structured."
+            "\nCite relevant sections from the context when helpful."
+        )
+        user_prompt = f"Context:\n{context}\n\nQuestion: {query}\n\nAnswer based only on the context provided."
+
+        logger.debug("llm.streaming", model=self.model)
+
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            stream=True,
+        )
+
+        for chunk in response:
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if delta and delta.content:
+                yield delta.content
+
     def _generate_local(self, query: str, context: str) -> str:
         """Generate answer using local LLM (e.g., Ollama)."""
         logger.info(

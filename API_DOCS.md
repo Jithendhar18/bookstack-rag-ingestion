@@ -1,14 +1,57 @@
 # API Reference
 
 Base URL: `http://localhost:8001`
+API prefix: `/api/v1`
 
 Interactive docs: `http://localhost:8001/docs` | ReDoc: `http://localhost:8001/redoc`
 
 ---
 
+## Conventions
+
+### Pagination
+
+List endpoints accept `?page=1&limit=20` query parameters and return a standard envelope:
+
+```json
+{
+  "items": [...],
+  "total": 42,
+  "page": 1,
+  "limit": 20
+}
+```
+
+### Error Format
+
+All errors (validation, domain, and unexpected) return a consistent structure:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Human-readable description",
+    "details": {}
+  }
+}
+```
+
+| Code | HTTP status | When |
+|------|-------------|------|
+| `VALIDATION_ERROR` | 422 | Request body fails schema validation |
+| `NOT_FOUND` | 404 | Session, run, or page not found |
+| `SERVICE_UNAVAILABLE` | 503 | Database or vector store unreachable |
+| `INTERNAL_ERROR` | 500 | Unexpected server-side error |
+
+### Request IDs
+
+Every response includes an `x-request-id` header (UUID) for distributed tracing. Pass `x-request-id` in the request to propagate your own ID.
+
+---
+
 ## Query
 
-### POST /query/
+### POST /api/v1/query
 
 Semantic search with optional reranking and LLM answer generation.
 
@@ -22,13 +65,11 @@ Semantic search with optional reranking and LLM answer generation.
     "page_id": 42,
     "page_title": "Security",
     "section_path": "Authentication",
-    "document_title": "Admin Guide",
-    "chunk_index": 0
+    "document_title": "Admin Guide"
   },
   "use_llm": false,
-  "use_reranking": false,
-  "include_metadata": true,
-  "keyword_boost": false
+  "rerank": false,
+  "include_sources": true
 }
 ```
 
@@ -38,17 +79,14 @@ Semantic search with optional reranking and LLM answer generation.
 | `top_k` | integer | 5 | Number of results to return |
 | `filters` | object | null | Metadata filters (all optional) |
 | `use_llm` | boolean | false | Generate an LLM answer from retrieved context |
-| `use_reranking` | boolean | false | Apply cross-encoder reranking |
-| `include_metadata` | boolean | true | Include chunk metadata in results |
-| `keyword_boost` | boolean | false | Boost results matching query keywords |
+| `rerank` | boolean | false | Apply cross-encoder reranking |
+| `include_sources` | boolean | true | Include chunk metadata in results |
 
 **Response:**
 
 ```json
 {
-  "request_id": "550e8400-e29b-41d4-a716-446655440000",
-  "query": "How do I configure OAuth2?",
-  "num_results": 3,
+  "answer": "OAuth2 is configured by setting...",
   "results": [
     {
       "chunk_id": "chunk_001",
@@ -58,73 +96,28 @@ Semantic search with optional reranking and LLM answer generation.
         "page_id": 42,
         "page_title": "Security Setup",
         "section_path": "Authentication > OAuth2",
-        "section_level": 2,
-        "chunk_index": 0,
-        "document_title": "Admin Guide"
+        "chunk_index": 0
       }
     }
   ],
-  "answer": null,
-  "metrics": {
-    "retrieval_time_ms": 45,
-    "llm_time_ms": 0,
-    "total_time_ms": 52,
-    "cache_hit": false
-  }
+  "sources": ["Security Setup", "Admin Guide"],
+  "latency_ms": 52
 }
 ```
 
 **Example:**
 
 ```bash
-curl -X POST http://localhost:8001/query/ \
+curl -X POST http://localhost:8001/api/v1/query \
   -H "Content-Type: application/json" \
   -d '{"query": "What is IVA Digital in Chile?", "top_k": 5, "use_llm": true}'
 ```
 
 ---
 
-### POST /query/batch
-
-Execute multiple queries in a single request.
-
-**Request:**
-
-```json
-{
-  "queries": [
-    {"query": "Authentication methods", "top_k": 3},
-    {"query": "Database setup", "use_llm": true}
-  ]
-}
-```
-
-**Response:**
-
-```json
-{
-  "request_id": "550e8400-e29b-41d4-a716-446655440000",
-  "total_queries": 2,
-  "results": [
-    {
-      "query_index": 0,
-      "request_id": "...",
-      "query": "Authentication methods",
-      "num_results": 3,
-      "results": [],
-      "answer": null,
-      "metrics": {}
-    }
-  ],
-  "errors": []
-}
-```
-
----
-
 ## Chat
 
-### POST /chat/session
+### POST /api/v1/chat/session
 
 Create a new chat session.
 
@@ -145,16 +138,68 @@ Create a new chat session.
   "user_id": "user123",
   "title": "Technical Questions",
   "created_at": "2026-03-20T10:30:00Z",
-  "updated_at": "2026-03-20T10:30:00Z",
   "is_archived": false
 }
 ```
 
 ---
 
-### POST /chat/message
+### GET /api/v1/chat/sessions
 
-Send a message and get a RAG-powered response.
+List all chat sessions with pagination.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | integer | 1 | Page number |
+| `limit` | integer | 20 | Results per page (max 100) |
+
+**Response:** Standard paginated envelope with `ChatSessionResponse` items.
+
+---
+
+### GET /api/v1/chat/session/{session_id}
+
+Retrieve full conversation history for a session.
+
+**Response:**
+
+```json
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "user_id": "user123",
+  "created_at": "2026-03-20T10:30:00Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "How do I configure OAuth2?",
+      "created_at": "2026-03-20T10:31:00Z"
+    },
+    {
+      "role": "assistant",
+      "content": "OAuth2 is configured by...",
+      "created_at": "2026-03-20T10:31:15Z"
+    }
+  ]
+}
+```
+
+---
+
+### DELETE /api/v1/chat/session/{session_id}
+
+Permanently delete a session and all its messages.
+
+---
+
+### POST /api/v1/chat/session/{session_id}/archive
+
+Soft-delete (archive) a session without losing history.
+
+---
+
+### POST /api/v1/chat/message
+
+Send a message and receive a full RAG-powered response.
 
 **Request:**
 
@@ -163,9 +208,7 @@ Send a message and get a RAG-powered response.
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
   "message": "How do I configure OAuth2?",
   "top_k": 5,
-  "filters": null,
-  "use_reranking": true,
-  "user_id": "user123"
+  "use_reranking": true
 }
 ```
 
@@ -173,13 +216,10 @@ Send a message and get a RAG-powered response.
 
 ```json
 {
-  "request_id": "...",
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "message_count": 3,
   "assistant_response": "OAuth2 is configured by...",
   "sources": [
     {
-      "chunk_id": "chunk_001",
       "page_id": 42,
       "page_title": "Security Setup",
       "score": 0.87
@@ -191,103 +231,67 @@ Send a message and get a RAG-powered response.
 
 ---
 
-### GET /chat/session/{session_id}
+### POST /api/v1/chat/message/stream
 
-Retrieve full conversation history.
+Send a message and receive the response as a **Server-Sent Events (SSE)** stream.
+Tokens are delivered incrementally as they are generated.
 
-**Response:**
+**Request:** Same body as `POST /api/v1/chat/message`.
 
-```json
-{
-  "session_id": "...",
-  "user_id": "user123",
-  "created_at": "2026-03-20T10:30:00Z",
-  "updated_at": "2026-03-20T10:45:00Z",
-  "message_count": 4,
-  "messages": [
-    {
-      "message_id": "msg_001",
-      "role": "user",
-      "content": "How do I configure OAuth2?",
-      "tokens_used": null,
-      "created_at": "2026-03-20T10:31:00Z"
-    },
-    {
-      "message_id": "msg_002",
-      "role": "assistant",
-      "content": "OAuth2 is configured by...",
-      "tokens_used": 250,
-      "created_at": "2026-03-20T10:31:15Z"
+**Response:** `text/event-stream` content type. Each event is a JSON object on a `data:` line.
+
+```
+data: {"token": "OAuth2"}
+
+data: {"token": " is configured"}
+
+data: {"token": " by..."}
+
+data: {"done": true, "sources": [{"page_id": 42, "page_title": "Security Setup", "score": 0.87}]}
+```
+
+**Example (curl):**
+
+```bash
+curl -N -X POST http://localhost:8001/api/v1/chat/message/stream \
+  -H "Content-Type: application/json" \
+  -d '{"session_id": "550e8400-...", "message": "Explain the auth flow"}'
+```
+
+**Example (JavaScript fetch):**
+
+```js
+const resp = await fetch("http://localhost:8001/api/v1/chat/message/stream", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({session_id: "550e8400-...", message: "Explain the auth flow"})
+});
+const reader = resp.body.getReader();
+const decoder = new TextDecoder();
+while (true) {
+  const {done, value} = await reader.read();
+  if (done) break;
+  const lines = decoder.decode(value).split("\n");
+  for (const line of lines) {
+    if (line.startsWith("data: ")) {
+      const event = JSON.parse(line.slice(6));
+      if (event.done) { console.log("Sources:", event.sources); break; }
+      process.stdout.write(event.token);
     }
-  ]
+  }
 }
 ```
 
 ---
 
-### GET /chat/sessions
+### WS /api/v1/chat/ws/{session_id}
 
-List chat sessions with pagination.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `user_id` | string | null | Filter by user |
-| `limit` | integer | 50 | Max results (up to 500) |
-| `offset` | integer | 0 | Pagination offset |
-
-**Response:**
-
-```json
-{
-  "sessions": [
-    {
-      "session_id": "...",
-      "user_id": "user123",
-      "title": "Technical Questions",
-      "created_at": "2026-03-20T10:30:00Z",
-      "is_archived": false
-    }
-  ],
-  "total": 5,
-  "limit": 50,
-  "offset": 0
-}
-```
-
----
-
-### DELETE /chat/session/{session_id}
-
-Permanently delete a session and all its messages.
-
-**Response:**
-
-```json
-{"message": "Session 550e8400-... deleted"}
-```
-
----
-
-### POST /chat/session/{session_id}/archive
-
-Soft-delete (archive) a session.
-
-**Response:**
-
-```json
-{"message": "Session 550e8400-... archived"}
-```
-
----
-
-### WS /chat/ws/{session_id}
-
-WebSocket endpoint for real-time streaming chat.
+WebSocket endpoint for real-time bidirectional streaming chat.
 
 **Connect:**
 
 ```bash
-wscat -c "ws://localhost:8001/chat/ws/550e8400-..."
+wscat -c "ws://localhost:8001/api/v1/chat/ws/550e8400-..."
 ```
 
 **Send:**
@@ -299,83 +303,101 @@ wscat -c "ws://localhost:8001/chat/ws/550e8400-..."
 **Receive:**
 
 ```json
-{"type": "response", "message_count": 2, "response": "The authentication flow...", "sources": []}
+{"type": "response", "response": "The authentication flow...", "sources": []}
 ```
 
 ---
 
 ## Ingestion
 
-### POST /ingestion/run
+### POST /api/v1/ingestion/run
 
-Start a document sync from BookStack.
+Start an asynchronous document sync from BookStack. Always runs in the background —
+poll the status endpoint to track progress.
 
 **Request:**
 
 ```json
 {
   "full_sync": false,
-  "run_async": true
+  "page_ids": [42, 101, 203],
+  "force": false
 }
 ```
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `full_sync` | boolean | false | Clear existing indexes and re-sync everything |
-| `run_async` | boolean | true | Run in background (non-blocking) |
+| `page_ids` | array[int] | null | Sync only these specific page IDs (partial sync) |
+| `force` | boolean | false | Re-process pages even if unchanged |
 
-**Response:**
+**Response (202 Accepted):**
 
 ```json
 {
-  "run_id": 1,
+  "run_id": 25,
   "status": "STARTED",
-  "started_at": "2026-03-20T10:30:00Z",
-  "finished_at": null,
-  "processed_pages": 0,
-  "failed_pages": 0,
-  "notes": "Full sync started..."
+  "started_at": "2026-03-20T10:30:00Z"
 }
 ```
 
 ---
 
-### GET /ingestion/runs
+### GET /api/v1/ingestion/run/{run_id}/status
 
-List ingestion runs with pagination.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `limit` | integer | 50 | Max results (up to 500) |
-| `offset` | integer | 0 | Pagination offset |
-| `status` | string | null | Filter: `STARTED`, `COMPLETED`, `FAILED` |
+Lightweight poll endpoint for tracking an async ingestion run.
 
 **Response:**
 
 ```json
-[
-  {
-    "run_id": 1,
-    "status": "COMPLETED",
-    "started_at": "2026-03-20T10:00:00Z",
-    "finished_at": "2026-03-20T10:45:00Z",
-    "processed_pages": 150,
-    "failed_pages": 2
-  }
-]
+{
+  "run_id": 25,
+  "status": "RUNNING",
+  "processed_pages": 87,
+  "failed_pages": 1
+}
+```
+
+Status values: `STARTED` -> `RUNNING` -> `COMPLETED` | `FAILED`
+
+---
+
+### GET /api/v1/ingestion/runs
+
+List all ingestion runs with pagination.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | integer | 1 | Page number |
+| `limit` | integer | 20 | Results per page |
+
+**Response:** Standard paginated envelope with `IngestionRunResponse` items.
+
+---
+
+### GET /api/v1/ingestion/runs/{run_id}
+
+Full details for a single ingestion run.
+
+**Response:**
+
+```json
+{
+  "run_id": 25,
+  "status": "COMPLETED",
+  "started_at": "2026-03-20T10:30:00Z",
+  "finished_at": "2026-03-20T11:15:00Z",
+  "processed_pages": 150,
+  "failed_pages": 2,
+  "notes": "Incremental sync - 150 pages updated"
+}
 ```
 
 ---
 
-### GET /ingestion/runs/{run_id}
+### GET /api/v1/ingestion/audit/page/{page_id}
 
-Get details of a specific ingestion run.
-
----
-
-### GET /ingestion/audit/page/{page_id}
-
-Get sync history for a specific BookStack page.
+Page-level sync audit history.
 
 **Response:**
 
@@ -387,7 +409,6 @@ Get sync history for a specific BookStack page.
     "status": "SYNCED",
     "reason": "Page updated in source",
     "source_updated_at": "2026-03-20T09:00:00Z",
-    "local_updated_at": "2026-03-20T10:05:00Z",
     "created_at": "2026-03-20T10:05:30Z"
   }
 ]
@@ -395,13 +416,13 @@ Get sync history for a specific BookStack page.
 
 ---
 
-### GET /ingestion/audit/run/{run_id}
+### GET /api/v1/ingestion/audit/run/{run_id}
 
-Get all audit records for an ingestion run.
+All audit records for a given ingestion run.
 
 ---
 
-### GET /ingestion/stats
+### GET /api/v1/ingestion/stats
 
 Overall ingestion statistics.
 
@@ -421,13 +442,47 @@ Overall ingestion statistics.
 
 ---
 
+## Metrics
+
+### GET /api/v1/metrics
+
+All system performance metrics collected since startup.
+
+**Response:**
+
+```json
+{
+  "metrics": {
+    "query_count": 142,
+    "avg_query_latency_ms": 87,
+    "cache_hit_rate": 0.34,
+    "ingestion_run_count": 5
+  },
+  "collected_at": "2026-03-20T11:30:00Z"
+}
+```
+
+---
+
+### GET /api/v1/metrics/queries
+
+Query-specific performance metrics.
+
+---
+
+### GET /api/v1/metrics/ingestion
+
+Ingestion metrics - database counts and pipeline performance.
+
+---
+
 ## Health
 
 ### GET /health/
 
 Comprehensive health check for all backend services.
 
-**Response (200):**
+**Response (200 OK):**
 
 ```json
 {
@@ -449,7 +504,7 @@ Returns HTTP 503 if any service is unhealthy.
 
 Kubernetes-compatible readiness probe.
 
-**Response (200):**
+**Response (200 OK):**
 
 ```json
 {"ready": true}
@@ -459,82 +514,75 @@ Returns HTTP 503 with `{"ready": false, "reason": "..."}` if not ready.
 
 ---
 
-## Error Responses
-
-All errors use a consistent format:
-
-```json
-{
-  "detail": "Detailed error message",
-  "request_id": "550e8400-...",
-  "status_code": 400
-}
-```
-
-| Code | Meaning |
-|------|---------|
-| 400 | Validation error (bad request body) |
-| 404 | Resource not found (session, run) |
-| 503 | Service unavailable (database, vector store down) |
-| 500 | Internal server error |
-
----
-
 ## Usage Examples
 
-### End-to-End Chat Flow (Python)
+### Async Ingestion Flow
+
+```bash
+# Start a partial sync for specific pages
+curl -X POST http://localhost:8001/api/v1/ingestion/run \
+  -H "Content-Type: application/json" \
+  -d '{"page_ids": [42, 101], "force": true}'
+
+# Poll for completion
+curl http://localhost:8001/api/v1/ingestion/run/26/status
+
+# View full run details
+curl http://localhost:8001/api/v1/ingestion/runs/26
+```
+
+### Chat with SSE Streaming (Python)
 
 ```python
-import requests
+import requests, json
 
-BASE = "http://localhost:8001"
+BASE = "http://localhost:8001/api/v1"
 
 # Create session
 session = requests.post(f"{BASE}/chat/session", json={
     "user_id": "alice", "title": "Setup Help"
 }).json()
+session_id = session["session_id"]
 
-# Send message
-reply = requests.post(f"{BASE}/chat/message", json={
-    "session_id": session["session_id"],
-    "message": "How do I set up the database?",
-    "user_id": "alice"
-}).json()
-print(reply["assistant_response"])
-
-# Follow-up (system retains history)
-reply2 = requests.post(f"{BASE}/chat/message", json={
-    "session_id": session["session_id"],
-    "message": "What about backups?",
-    "user_id": "alice"
-}).json()
-print(reply2["assistant_response"])
+# Stream a reply
+with requests.post(
+    f"{BASE}/chat/message/stream",
+    json={"session_id": session_id, "message": "How do I set up the database?"},
+    stream=True
+) as resp:
+    for raw_line in resp.iter_lines():
+        if raw_line and raw_line.startswith(b"data: "):
+            event = json.loads(raw_line[6:])
+            if event.get("done"):
+                print("\nSources:", event.get("sources"))
+                break
+            print(event["token"], end="", flush=True)
 ```
 
 ### Query with LLM (curl)
 
 ```bash
-curl -X POST http://localhost:8001/query/ \
+curl -X POST http://localhost:8001/api/v1/query \
   -H "Content-Type: application/json" \
   -d '{
     "query": "What is the recommended production configuration?",
     "top_k": 5,
     "use_llm": true,
-    "use_reranking": true
+    "rerank": true
   }'
 ```
 
-### Monitor Ingestion (curl)
+### Full Sync and Monitor (curl)
 
 ```bash
-# Start sync
-curl -X POST http://localhost:8001/ingestion/run \
+# Trigger full re-sync
+curl -X POST http://localhost:8001/api/v1/ingestion/run \
   -H "Content-Type: application/json" \
-  -d '{"full_sync": true, "run_async": true}'
+  -d '{"full_sync": true}'
 
-# Check status
-curl http://localhost:8001/ingestion/runs/1
+# Check overall stats
+curl http://localhost:8001/api/v1/ingestion/stats
 
-# View stats
-curl http://localhost:8001/ingestion/stats
+# View performance metrics
+curl http://localhost:8001/api/v1/metrics
 ```

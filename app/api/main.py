@@ -1,29 +1,29 @@
 """FastAPI application for RAG query API.
 
 This module initializes and configures the FastAPI application including:
-- Route registration (health checks, query endpoints)
-- Dependency injection setup
-- Middleware for structured logging and CORS
-- Request ID propagation
+- API versioning (/api/v1/)
+- Route registration (health, query, ingestion, chat, metrics)
+- Standardised error handling
+- Middleware for structured logging, CORS, and request_id propagation
 - Graceful startup/shutdown of services
 """
 
-import time
-import uuid
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Callable
+from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request, Response
-from fastapi.exceptions import RequestValidationError
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse
 
-from app.api.routes import chat, health, ingestion, query
-from app.api.utils import APIException
-from app.config.logging import get_logger, request_id_ctx, setup_logging
+from app.api.middleware.error_handler import register_error_handlers
+from app.api.middleware.request_context import register_request_context
+from app.api.routes import health as legacy_health
+from app.api.routes.v1 import chat as v1_chat
+from app.api.routes.v1 import ingestion as v1_ingestion
+from app.api.routes.v1 import metrics as v1_metrics
+from app.api.routes.v1 import query as v1_query
+from app.config.logging import get_logger, setup_logging
 from app.config.settings import get_settings
-from app.domain.exceptions import DomainException
 
 logger = get_logger(__name__)
 
@@ -117,7 +117,7 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json",
     )
 
-    # Add CORS middleware
+    # ── Middleware ─────────────────────────────────────────────────
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -126,103 +126,23 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Add request logging middleware with request_id propagation
-    @app.middleware("http")
-    async def log_requests(request: Request, call_next: Callable) -> Response:
-        """Log HTTP requests with timing and propagate request_id."""
-        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
-        token = request_id_ctx.set(request_id)
-        start = time.monotonic()
+    # Request-id propagation + timing logs
+    register_request_context(app)
 
-        try:
-            response: Response = await call_next(request)
-            duration_ms = (time.monotonic() - start) * 1000
-            logger.info(
-                "http.request",
-                method=request.method,
-                path=request.url.path,
-                status=response.status_code,
-                duration_ms=round(duration_ms, 2),
-                request_id=request_id,
-            )
-            response.headers["x-request-id"] = request_id
-            return response
-        except Exception as exc:
-            duration_ms = (time.monotonic() - start) * 1000
-            logger.error(
-                "http.request.error",
-                method=request.method,
-                path=request.url.path,
-                exception=type(exc).__name__,
-                duration_ms=round(duration_ms, 2),
-                request_id=request_id,
-                exc_info=True,
-            )
-            raise
-        finally:
-            request_id_ctx.reset(token)
+    # ── Standardised error handlers ───────────────────────────────
+    register_error_handlers(app)
 
-    # Register routes
-    app.include_router(health.router, prefix="", tags=["health"])
-    app.include_router(query.router, prefix="/query", tags=["query"])
-    app.include_router(ingestion.router, tags=["ingestion"])
-    app.include_router(chat.router, tags=["chat"])
+    # ── V1 API routes (/api/v1/…) ─────────────────────────────────
+    app.include_router(v1_query.router, prefix="/api/v1", tags=["query"])
+    app.include_router(v1_ingestion.router, prefix="/api/v1", tags=["ingestion"])
+    app.include_router(v1_chat.router, prefix="/api/v1", tags=["chat"])
+    app.include_router(v1_metrics.router, prefix="/api/v1", tags=["metrics"])
 
-    # ---------------------------------------------------------------------- #
-    # Global exception handlers
-    # ---------------------------------------------------------------------- #
-    @app.exception_handler(APIException)
-    async def api_exception_handler(request: Request, exc: APIException) -> JSONResponse:
-        logger.warning(
-            "api.exception",
-            status_code=exc.status_code,
-            message=exc.message,
-            path=request.url.path,
-        )
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"error": exc.message, "details": exc.details},
-        )
+    # Health lives outside the versioned prefix (standard k8s convention)
+    app.include_router(legacy_health.router, prefix="", tags=["health"])
 
-    @app.exception_handler(DomainException)
-    async def domain_exception_handler(request: Request, exc: DomainException) -> JSONResponse:
-        logger.warning(
-            "domain.exception",
-            code=exc.code,
-            message=exc.message,
-            path=request.url.path,
-        )
-        return JSONResponse(
-            status_code=400,
-            content={"error": exc.message, "code": exc.code},
-        )
-
-    @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(
-        request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
-        logger.warning("validation.error", path=request.url.path, errors=str(exc.errors()))
-        return JSONResponse(
-            status_code=422,
-            content={"error": "Validation error", "details": exc.errors()},
-        )
-
-    @app.exception_handler(Exception)
-    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        logger.error(
-            "unhandled.exception",
-            path=request.url.path,
-            exception=type(exc).__name__,
-            exc_info=True,
-        )
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Internal server error"},
-        )
-
-    # Custom OpenAPI schema
+    # ── Custom OpenAPI schema ─────────────────────────────────────
     def custom_openapi():
-        """Generate custom OpenAPI schema with examples."""
         if app.openapi_schema:
             return app.openapi_schema
 
@@ -232,23 +152,24 @@ def create_app() -> FastAPI:
             description=app.description,
             routes=app.routes,
         )
-
-        # Add info about features
         openapi_schema["info"]["x-features"] = [
+            "API versioning (/api/v1)",
+            "SSE streaming chat responses",
+            "Async background ingestion",
+            "Page-based pagination",
             "Vector similarity search with metadata filtering",
             "Optional cross-encoder reranking",
             "LLM-based answer generation",
             "Query result caching",
-            "Batch query processing",
             "Request tracing with IDs",
+            "Observability metrics",
         ]
-
         app.openapi_schema = openapi_schema
         return app.openapi_schema
 
     app.openapi = custom_openapi
 
-    # Root endpoint
+    # ── Root endpoint ─────────────────────────────────────────────
     @app.get("/", tags=["info"])
     async def root():
         """Root endpoint with API information."""
@@ -256,22 +177,27 @@ def create_app() -> FastAPI:
             "name": app.title,
             "version": app.version,
             "description": app.description,
+            "api_prefix": "/api/v1",
             "endpoints": {
                 "docs": "/docs",
                 "redoc": "/redoc",
                 "openapi": "/openapi.json",
                 "health": "/health/",
                 "health_ready": "/health/ready",
-                "ingestion_run": "POST /ingestion/run",
-                "ingestion_runs": "GET /ingestion/runs",
-                "ingestion_stats": "GET /ingestion/stats",
-                "query": "POST /query/",
-                "query_batch": "POST /query/batch",
-                "chat_session_create": "POST /chat/session",
-                "chat_message": "POST /chat/message",
-                "chat_history": "GET /chat/session/{session_id}",
-                "chat_sessions": "GET /chat/sessions",
-                "chat_ws": "WS /chat/ws/{session_id}",
+                "query": "POST /api/v1/query",
+                "ingestion_run": "POST /api/v1/ingestion/run",
+                "ingestion_runs": "GET /api/v1/ingestion/runs",
+                "ingestion_run_status": "GET /api/v1/ingestion/run/{run_id}/status",
+                "ingestion_stats": "GET /api/v1/ingestion/stats",
+                "chat_session_create": "POST /api/v1/chat/session",
+                "chat_message": "POST /api/v1/chat/message",
+                "chat_stream": "POST /api/v1/chat/message/stream",
+                "chat_history": "GET /api/v1/chat/session/{session_id}",
+                "chat_sessions": "GET /api/v1/chat/sessions",
+                "chat_ws": "WS /api/v1/chat/ws/{session_id}",
+                "metrics": "GET /api/v1/metrics",
+                "metrics_queries": "GET /api/v1/metrics/queries",
+                "metrics_ingestion": "GET /api/v1/metrics/ingestion",
             },
             "settings": {
                 "enable_chat": settings.enable_chat,
