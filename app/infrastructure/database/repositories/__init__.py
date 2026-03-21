@@ -445,7 +445,7 @@ class ChatMessageRepository(IChatMessageRepository):
             role=message.role,
             content=message.content,
             tokens_used=message.tokens_used,
-            metadata=message.metadata,
+            extra_metadata=message.extra_metadata,
         )
         self.session.add(orm)
         self.session.flush()
@@ -460,7 +460,7 @@ class ChatMessageRepository(IChatMessageRepository):
                 role=message.role,
                 content=message.content,
                 tokens_used=message.tokens_used,
-                metadata=message.metadata,
+                extra_metadata=message.extra_metadata,
             )
             for message in messages
         ]
@@ -483,7 +483,7 @@ class ChatMessageRepository(IChatMessageRepository):
             role=orm.role,
             content=orm.content,
             tokens_used=orm.tokens_used,
-            metadata=orm.metadata,
+            extra_metadata=orm.extra_metadata,
             created_at=orm.created_at,
         )
 

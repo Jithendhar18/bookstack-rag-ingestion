@@ -17,7 +17,7 @@ class ChatMessage:
     content: str
     created_at: datetime
     tokens_used: Optional[int] = None
-    metadata: Optional[str] = None  # JSON metadata with source refs, etc.
+    extra_metadata: Optional[str] = None  # JSON metadata with source refs, etc.
 
     def __hash__(self) -> int:
         """Make messages hashable by their ID."""

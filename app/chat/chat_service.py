@@ -101,7 +101,7 @@ class ChatService:
             role=role,
             content=content,
             tokens_used=tokens_used,
-            metadata=json.dumps(metadata) if metadata else None,
+            extra_metadata=json.dumps(metadata) if metadata else None,
         )
         self.session.add(message)
         self.session.commit()

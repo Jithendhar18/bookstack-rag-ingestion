@@ -506,6 +506,18 @@ class Settings(BaseSettings):
     def postgres_sqlalchemy_url(self) -> str:
         return self.database.sqlalchemy_url
 
+    # ─── Embedding helpers ───────────────────────────────────
+
+    @property
+    def is_openai(self) -> bool:
+        """True when the active embedding provider is OpenAI."""
+        return self.embedding_provider == "openai"
+
+    @property
+    def embedding_model(self) -> str:
+        """Active embedding model name, resolved from the current provider."""
+        return self.openai_embedding_model if self.is_openai else self.local_embedding_model
+
     # ─── Environment helpers ─────────────────────────────────
 
     @property

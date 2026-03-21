@@ -169,7 +169,7 @@ class ChatService:
             role="assistant",
             content=content,
             tokens_used=tokens_used,
-            metadata=metadata,
+            extra_metadata=metadata,
             created_at=datetime.now(timezone.utc),
         )
 

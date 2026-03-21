@@ -145,7 +145,7 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(50), nullable=False)  # "user", "assistant", "system"
     content: Mapped[str] = mapped_column(Text, nullable=False)
     tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    metadata: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON for source refs, etc.
+    extra_metadata: Mapped[str | None] = mapped_column("metadata", Text, nullable=True)  # JSON for source refs, etc.
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

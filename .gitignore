@@ -10,6 +10,9 @@ venv/
 # Environment files
 .env
 
+# ChromaDB local persistence
+chroma_data/
+
 # Tool caches and outputs
 .pytest_cache/
 .mypy_cache/
