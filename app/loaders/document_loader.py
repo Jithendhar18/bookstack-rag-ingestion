@@ -14,6 +14,7 @@ class LoadedDocument(BaseModel):
     book_slug: str | None = None
     chapter_id: int | None = None
     markdown: str
+    html: str
     updated_at: str
     source_url: str
 
@@ -29,6 +30,7 @@ class DocumentLoader:
         resolved_page_id = int(page.get("id"))
         title = str(page.get("name", "Untitled"))
         markdown = str(page.get("markdown") or "")
+        html = str(page.get("html") or "")
         updated_at = str(page.get("updated_at") or "")
 
         book = page.get("book") or {}
@@ -36,9 +38,16 @@ class DocumentLoader:
 
         book_slug = self._to_optional_str(book.get("slug") or page.get("book_slug"))
         chapter_id = self._to_optional_int(chapter.get("id") or page.get("chapter_id"))
+        page_slug = self._to_optional_str(page.get("slug"))
 
+        base = self.settings.bookstack_url.rstrip("/")
         relative_url = self._to_optional_str(page.get("url"))
-        source_url = f"{self.settings.bookstack_url.rstrip('/')}{relative_url}" if relative_url else self.settings.bookstack_url
+        if relative_url:
+            source_url = f"{base}{relative_url}"
+        elif book_slug and page_slug:
+            source_url = f"{base}/books/{book_slug}/page/{page_slug}"
+        else:
+            source_url = f"{base}/link/{resolved_page_id}"
 
         return LoadedDocument(
             page_id=resolved_page_id,
@@ -46,6 +55,7 @@ class DocumentLoader:
             book_slug=book_slug,
             chapter_id=chapter_id,
             markdown=markdown,
+            html=html,
             updated_at=updated_at,
             source_url=source_url,
         )

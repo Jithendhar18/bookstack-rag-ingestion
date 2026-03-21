@@ -42,6 +42,16 @@ class Settings(BaseModel):
     chroma_host: str = "localhost"
     chroma_port: int = 8000
 
+    groq_api_key: str = ""
+    llm_model: str = "llama-3.3-70b-versatile"
+    llm_base_url: str = "https://api.groq.com/openai/v1"
+    llm_temperature: float = 0.2
+    llm_max_tokens: int = 1024
+    rag_top_k: int = 5
+    rag_min_score: float = 0.25
+    api_host: str = "0.0.0.0"
+    api_port: int = 8080
+
     @property
     def bookstack_api_base(self) -> str:
         base = self.bookstack_url.rstrip("/")
@@ -107,6 +117,15 @@ class Settings(BaseModel):
             "CHROMA_USE_HTTP",
             "CHROMA_HOST",
             "CHROMA_PORT",
+            "GROQ_API_KEY",
+            "LLM_MODEL",
+            "LLM_BASE_URL",
+            "LLM_TEMPERATURE",
+            "LLM_MAX_TOKENS",
+            "RAG_TOP_K",
+            "RAG_MIN_SCORE",
+            "API_HOST",
+            "API_PORT",
         ]
 
         values: dict[str, str] = {}
@@ -134,6 +153,15 @@ class Settings(BaseModel):
             "CHROMA_USE_HTTP": "chroma_use_http",
             "CHROMA_HOST": "chroma_host",
             "CHROMA_PORT": "chroma_port",
+            "GROQ_API_KEY": "groq_api_key",
+            "LLM_MODEL": "llm_model",
+            "LLM_BASE_URL": "llm_base_url",
+            "LLM_TEMPERATURE": "llm_temperature",
+            "LLM_MAX_TOKENS": "llm_max_tokens",
+            "RAG_TOP_K": "rag_top_k",
+            "RAG_MIN_SCORE": "rag_min_score",
+            "API_HOST": "api_host",
+            "API_PORT": "api_port",
         }
 
         for env_key in optional_keys:

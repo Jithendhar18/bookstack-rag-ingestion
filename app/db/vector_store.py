@@ -33,6 +33,14 @@ class VectorStore:
             return
         self.collection.delete(ids=chunk_ids)
 
+    def query(self, query_embedding: list[float], n_results: int = 5) -> dict[str, Any]:
+        """Search ChromaDB for chunks similar to the query embedding."""
+        return self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=n_results,
+            include=["documents", "metadatas", "distances"],
+        )
+
     def upsert_chunks(self, chunks: list[EnrichedChunk], embeddings: list[list[float]]) -> list[str]:
         if len(chunks) != len(embeddings):
             raise ValueError("chunks and embeddings must have the same length")

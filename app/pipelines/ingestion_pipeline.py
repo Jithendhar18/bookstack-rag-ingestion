@@ -171,10 +171,16 @@ class IngestionPipeline:
     def _process_page(self, page_id: int) -> None:
         document = self.loader.load_page(page_id)
 
-        plain_text = self.parser.parse_markdown(document.markdown)
+        if document.markdown.strip():
+            plain_text = self.parser.parse_markdown(document.markdown)
+            raw_content = document.markdown
+        else:
+            plain_text = self.parser.html_to_text(document.html)
+            raw_content = document.html
+
         structure = self.structure_analyzer.analyze(
             title=document.title,
-            markdown_content=document.markdown,
+            markdown_content=raw_content,
             plain_text=plain_text,
         )
 
